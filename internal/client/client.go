@@ -19,9 +19,10 @@ import (
 	"github.com/jasonbayton/outpost-cli/internal/config"
 )
 
-// DefaultTimeout caps any single request. Mail sends and DNS verifies
-// are interactive so a >30s call almost always means something is
-// hung; better to fail fast than let the operator wonder.
+// DefaultTimeout caps any single request. Most calls finish in <1s,
+// so 30s is generous for normal work. Long-running operations (mail
+// send with multi-MB attachments, DNS verify against a slow upstream)
+// can override via the per-command --timeout flag.
 const DefaultTimeout = 30 * time.Second
 
 // Client is bound to one server + one token. Construct via New().
@@ -36,6 +37,14 @@ type Client struct {
 // stored URL doesn't parse — that's recoverable by re-running login,
 // not by retrying the same call.
 func New(host config.HostConfig, version string) (*Client, error) {
+	return NewWithTimeout(host, version, DefaultTimeout)
+}
+
+// NewWithTimeout is the explicit-timeout constructor used by commands
+// that legitimately need longer than 30s — `outpost mail send` with
+// multi-MB attachments is the canonical case (a 40 MB upload over a
+// slow link shouldn't fail just because we picked a tight default).
+func NewWithTimeout(host config.HostConfig, version string, timeout time.Duration) (*Client, error) {
 	if host.URL == "" {
 		return nil, errors.New("host config has no URL")
 	}
@@ -43,10 +52,13 @@ func New(host config.HostConfig, version string) (*Client, error) {
 	if err != nil {
 		return nil, fmt.Errorf("parse server url: %w", err)
 	}
+	if timeout <= 0 {
+		timeout = DefaultTimeout
+	}
 	return &Client{
 		base:       parsed,
 		token:      host.Token,
-		httpClient: &http.Client{Timeout: DefaultTimeout},
+		httpClient: &http.Client{Timeout: timeout},
 		userAgent:  fmt.Sprintf("outpost-cli/%s", version),
 	}, nil
 }
