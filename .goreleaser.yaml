@@ -1,0 +1,61 @@
+# goreleaser builds + publishes the cross-compiled `outpost` binaries
+# to GitHub Releases on every tag matching cli-vX.Y.Z. The version
+# string is injected via -ldflags so `outpost --version` reports the
+# actual release tag rather than "dev".
+version: 2
+
+project_name: outpost
+
+builds:
+  - id: outpost
+    main: ./cmd/outpost
+    binary: outpost
+    env:
+      - CGO_ENABLED=0
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+    ignore:
+      - goos: windows
+        goarch: arm64
+    ldflags:
+      - -s -w -X main.version={{.Version}}
+
+archives:
+  - id: default
+    formats: [tar.gz]
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+
+checksum:
+  name_template: checksums.txt
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  use: github
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+
+# Homebrew tap. Set GORELEASER_BREW_TAP_TOKEN in the release workflow
+# with a PAT that has 'repo' scope on the tap repository.
+brews:
+  - name: outpost
+    repository:
+      owner: jasonbayton
+      name: homebrew-tap
+      token: "{{ .Env.GORELEASER_BREW_TAP_TOKEN }}"
+    homepage: https://github.com/jasonbayton/outpost-cli
+    description: Remote admin CLI for an Outpost mail server
+    license: MIT
+    install: |
+      bin.install "outpost"
+    test: |
+      system "#{bin}/outpost", "--version"

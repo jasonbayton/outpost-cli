@@ -1,0 +1,7 @@
+# Build artefacts
+/outpost
+/dist/
+
+# Local config + state
+*.bak
+.DS_Store

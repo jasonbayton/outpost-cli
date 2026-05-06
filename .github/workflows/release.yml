@@ -1,0 +1,38 @@
+# Release workflow. Triggered by `vX.Y.Z` tags. goreleaser cross-
+# compiles the binaries, attaches them to a GitHub Release, and (if
+# the homebrew-tap PAT is configured) updates the brew formula too.
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+          cache-dependency-path: go.sum
+
+      - name: Run goreleaser
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: latest
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Optional: a PAT with `repo` scope on the homebrew tap. If
+          # unset, goreleaser skips the brew step rather than failing
+          # the entire release.
+          GORELEASER_BREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
