@@ -10,11 +10,18 @@ and CI tool.
 
 ## Install
 
-### Homebrew (recommended on macOS / Linux)
+### One-line installer (macOS / Linux)
 
 ```sh
-brew install jasonbayton/tap/outpost
+curl -fsSL https://raw.githubusercontent.com/jasonbayton/outpost-cli/main/install.sh | sh
 ```
+
+Detects your OS + arch, downloads the matching tarball from the latest
+release, verifies the SHA-256 against the release's `checksums.txt`, and
+installs the binary into the first writable directory it finds in:
+`$OUTPOST_INSTALL_DIR`, `/usr/local/bin`, `$HOME/.local/bin`, `$HOME/bin`.
+
+Pin a version with `OUTPOST_VERSION=v0.1.0 curl ... | sh`.
 
 ### Go install
 
@@ -24,9 +31,15 @@ go install github.com/jasonbayton/outpost-cli/cmd/outpost@latest
 
 ### Binary downloads
 
-Each release at <https://github.com/jasonbayton/outpost-cli/releases> ships static
-binaries for darwin-arm64, darwin-amd64, linux-arm64, linux-amd64, and
-windows-amd64.
+Each release at <https://github.com/jasonbayton/outpost-cli/releases> ships
+static binaries for darwin-arm64, darwin-amd64, linux-arm64, linux-amd64,
+and windows-amd64. Download the tarball / zip and put the binary on your
+`$PATH`.
+
+### Homebrew (planned)
+
+`brew install jasonbayton/tap/outpost` will work once the homebrew tap
+repo is set up. Until then, use the one-line installer or `go install`.
 
 ## First run
 
