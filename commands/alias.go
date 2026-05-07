@@ -122,11 +122,15 @@ Target must be an existing local user.`,
 }
 
 func aliasRemoveCmd(flags *globalFlags) *cobra.Command {
+	var yes bool
 	cmd := &cobra.Command{
 		Use:   "rm <id|address|@domain>",
 		Short: "Delete one alias by id, full address, or @domain (catch-all)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if !yes {
+				return fmt.Errorf("pass --yes to confirm deletion of %q", args[0])
+			}
 			return withClient(flags, func(ctx context.Context, c *client.Client, mode output.Mode) error {
 				aliasID, err := resolveAliasID(ctx, c, args[0])
 				if err != nil {
@@ -140,6 +144,7 @@ func aliasRemoveCmd(flags *globalFlags) *cobra.Command {
 			})
 		},
 	}
+	cmd.Flags().BoolVar(&yes, "yes", false, "Confirm deletion")
 	return cmd
 }
 

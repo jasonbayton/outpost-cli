@@ -38,8 +38,13 @@ func queueListCmd(flags *globalFlags) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return withClient(flags, func(ctx context.Context, c *client.Client, mode output.Mode) error {
 				q := url.Values{}
-				if len(statuses) > 0 {
-					q.Set("status", strings.Join(statuses, ","))
+				// FastAPI's `list[str]` parses repeated query keys
+				// (?status=a&status=b), NOT a comma-joined value.
+				// Add() per element preserves that shape.
+				for _, s := range statuses {
+					if s != "" {
+						q.Add("status", s)
+					}
 				}
 				if domain != "" {
 					q.Set("domain", domain)
@@ -98,7 +103,7 @@ func queueRetryCmd(flags *globalFlags) *cobra.Command {
 		Short: "Mark a queued message for immediate redelivery",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return queuePostAction(flags, args[0], "retry")
+			return queuePostAction(cmd, flags, args[0], "retry")
 		},
 	}
 }
@@ -109,7 +114,7 @@ func queueHoldCmd(flags *globalFlags) *cobra.Command {
 		Short: "Hold a queued message — delivery worker won't pick it up until released",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return queuePostAction(flags, args[0], "hold")
+			return queuePostAction(cmd, flags, args[0], "hold")
 		},
 	}
 }
@@ -120,7 +125,7 @@ func queueReleaseCmd(flags *globalFlags) *cobra.Command {
 		Short: "Release a held message back into the active queue",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return queuePostAction(flags, args[0], "release")
+			return queuePostAction(cmd, flags, args[0], "release")
 		},
 	}
 }
@@ -148,14 +153,14 @@ func queueDeleteCmd(flags *globalFlags) *cobra.Command {
 	return cmd
 }
 
-func queuePostAction(flags *globalFlags, queueID, action string) error {
+func queuePostAction(cmd *cobra.Command, flags *globalFlags, queueID, action string) error {
 	return withClient(flags, func(ctx context.Context, c *client.Client, mode output.Mode) error {
 		var resp map[string]any
 		if err := c.Do(ctx, "POST", fmt.Sprintf("/admin/api/queue/%s/%s", url.PathEscape(queueID), action), nil, &resp); err != nil {
 			return err
 		}
 		if mode == output.JSON {
-			return output.RenderJSON(nil, resp)
+			return output.RenderJSON(cmd.OutOrStdout(), resp)
 		}
 		output.Stderrf("%s %s", strings.Title(action), queueID)
 		return nil

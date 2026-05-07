@@ -182,6 +182,9 @@ func mailboxUpdateCmd(flags *globalFlags) *cobra.Command {
 				if err := c.Do(ctx, "PATCH", fmt.Sprintf("/admin/api/mailboxes/%s", url.PathEscape(accountID)), body, &resp); err != nil {
 					return err
 				}
+				if mode == output.JSON {
+					return output.RenderJSON(cmd.OutOrStdout(), resp)
+				}
 				output.Stderrf("Updated %s", args[0])
 				return nil
 			})

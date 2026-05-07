@@ -32,15 +32,24 @@ func userCmd(flags *globalFlags) *cobra.Command {
 
 func userListCmd(flags *globalFlags) *cobra.Command {
 	var includeDisabled bool
+	var statusFilter string
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List users",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return withClient(flags, func(ctx context.Context, c *client.Client, mode output.Mode) error {
-				path := "/admin/api/users"
-				if includeDisabled {
-					path += "?include_disabled=true"
+				// /admin/api/users uses ?status=active|disabled|all,
+				// NOT ?include_disabled. Map the boolean shortcut onto
+				// the right query value.
+				want := statusFilter
+				if want == "" {
+					if includeDisabled {
+						want = "all"
+					} else {
+						want = "active"
+					}
 				}
+				path := fmt.Sprintf("/admin/api/users?status=%s", url.QueryEscape(want))
 				var resp struct {
 					Users []map[string]any `json:"users"`
 				}
@@ -51,7 +60,8 @@ func userListCmd(flags *globalFlags) *cobra.Command {
 			})
 		},
 	}
-	cmd.Flags().BoolVar(&includeDisabled, "include-disabled", false, "Include deactivated users")
+	cmd.Flags().BoolVar(&includeDisabled, "include-disabled", false, "Shorthand for --status all")
+	cmd.Flags().StringVar(&statusFilter, "status", "", "Filter: active (default) | disabled | all")
 	return cmd
 }
 
@@ -298,11 +308,13 @@ func userResetPasskeyCmd(flags *globalFlags) *cobra.Command {
 
 // resolveUserID looks up a user by email or username via /users.
 // Returns the User row id ("U..." prefix) the admin panel uses.
+// Uses ?status=all so a disabled user can still be resolved for
+// `user update --enable`, `user rm`, etc.
 func resolveUserID(ctx context.Context, c *client.Client, identifier string) (string, error) {
 	var resp struct {
 		Users []map[string]any `json:"users"`
 	}
-	if err := c.Do(ctx, "GET", "/admin/api/users?include_disabled=true", nil, &resp); err != nil {
+	if err := c.Do(ctx, "GET", "/admin/api/users?status=all", nil, &resp); err != nil {
 		return "", err
 	}
 	identifier = strings.ToLower(strings.TrimSpace(identifier))

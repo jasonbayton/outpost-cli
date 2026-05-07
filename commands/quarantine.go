@@ -118,11 +118,19 @@ func quarantineReleaseCmd(flags *globalFlags) *cobra.Command {
 }
 
 func quarantineBlacklistCmd(flags *globalFlags) *cobra.Command {
-	return &cobra.Command{
+	var yes bool
+	cmd := &cobra.Command{
 		Use:   "blacklist <email-id>",
 		Short: "Deny-list the message's sender domain and delete every quarantined message from it",
-		Args:  cobra.ExactArgs(1),
+		Long: `Destructive: this both writes a deny-list entry for the sender's
+domain (so future inbound from that domain is rejected) AND deletes
+every currently-quarantined message from that domain. Pass --yes to
+confirm.`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if !yes {
+				return fmt.Errorf("pass --yes to confirm blacklisting; this also deletes every quarantined message from the sender's domain")
+			}
 			return withClient(flags, func(ctx context.Context, c *client.Client, mode output.Mode) error {
 				var resp map[string]any
 				if err := c.Do(ctx, "POST", fmt.Sprintf("/admin/api/quarantine/%s/blacklist-sender", url.PathEscape(args[0])), nil, &resp); err != nil {
@@ -137,6 +145,8 @@ func quarantineBlacklistCmd(flags *globalFlags) *cobra.Command {
 			})
 		},
 	}
+	cmd.Flags().BoolVar(&yes, "yes", false, "Confirm blacklist + bulk delete")
+	return cmd
 }
 
 func quarantineDeleteCmd(flags *globalFlags) *cobra.Command {
