@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -19,7 +20,8 @@ import (
 type globalFlags struct {
 	server   string
 	jsonOut  bool
-	insecure bool // future: skip TLS verify for self-signed dev hosts
+	insecure bool          // future: skip TLS verify for self-signed dev hosts
+	timeout  time.Duration // 0 means "use the client default"
 }
 
 // NewRoot constructs the root cobra command tree.
@@ -37,6 +39,7 @@ keeps working during recovery. outpost is the laptop / CI tool.`,
 	}
 	root.PersistentFlags().StringVar(&flags.server, "server", "", "Server hostname (overrides default; falls back to $OUTPOST_SERVER and ~/.config/outpost/config.toml)")
 	root.PersistentFlags().BoolVar(&flags.jsonOut, "json", false, "Emit JSON instead of human-readable output")
+	root.PersistentFlags().DurationVar(&flags.timeout, "timeout", 0, "HTTP timeout per request (default 30s; raise for large mail attachments)")
 
 	root.AddCommand(authCmd(flags))
 	root.AddCommand(healthCmd(flags))
@@ -60,7 +63,7 @@ func withClient(flags *globalFlags, body func(ctx context.Context, c *client.Cli
 	if err != nil {
 		return err
 	}
-	c, err := client.New(host, version())
+	c, err := client.NewWithTimeout(host, version(), flags.timeout)
 	if err != nil {
 		return err
 	}

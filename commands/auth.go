@@ -29,7 +29,8 @@ func authCmd(flags *globalFlags) *cobra.Command {
 }
 
 func authLoginCmd(flags *globalFlags) *cobra.Command {
-	var serverFlag, tokenFlag string
+	var serverFlag string
+	var tokenStdin bool
 	var setDefault bool
 	cmd := &cobra.Command{
 		Use:   "login",
@@ -43,7 +44,14 @@ Get a token by SSHing to the server and running:
 Then paste the printed token here. The token is written to
 $XDG_CONFIG_HOME/outpost/config.toml with mode 0600 — readable only by your
 user. Use --set-default to make this server the one used when --server isn't
-passed.`,
+passed.
+
+Tokens are NEVER accepted on the command line — putting a secret in argv
+leaks it to shell history and /proc/$pid/cmdline. Provide it via:
+
+  - the interactive prompt (default)
+  - $OUTPOST_TOKEN env var
+  - stdin pipe with --token-stdin (e.g. ` + "`echo $TOKEN | outpost auth login --server … --token-stdin`" + `)`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg, _, err := config.Load()
 			if err != nil {
@@ -61,8 +69,20 @@ passed.`,
 				return fmt.Errorf("server URL must use http(s), got %q", parsed.Scheme)
 			}
 
-			token := strings.TrimSpace(tokenFlag)
-			if token == "" {
+			// Token sources, in priority order: --token-stdin, env, prompt.
+			// We deliberately do NOT take a --token=value flag because that
+			// puts the secret in argv (shell history, /proc).
+			var token string
+			switch {
+			case tokenStdin:
+				data, readErr := io.ReadAll(cmd.InOrStdin())
+				if readErr != nil {
+					return fmt.Errorf("read token from stdin: %w", readErr)
+				}
+				token = strings.TrimSpace(string(data))
+			case os.Getenv("OUTPOST_TOKEN") != "":
+				token = strings.TrimSpace(os.Getenv("OUTPOST_TOKEN"))
+			default:
 				token, err = readToken(cmd.InOrStdin(), cmd.OutOrStderr())
 				if err != nil {
 					return err
@@ -108,7 +128,7 @@ passed.`,
 		},
 	}
 	cmd.Flags().StringVar(&serverFlag, "server", "", "Server URL, e.g. https://outpost.example.org")
-	cmd.Flags().StringVar(&tokenFlag, "token", "", "API token (omit to be prompted; or pipe via stdin)")
+	cmd.Flags().BoolVar(&tokenStdin, "token-stdin", false, "Read the token from stdin (use this when piping a token in CI)")
 	cmd.Flags().BoolVar(&setDefault, "set-default", false, "Make this server the default for future invocations")
 	_ = cmd.MarkFlagRequired("server")
 	return cmd
