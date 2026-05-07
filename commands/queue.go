@@ -162,7 +162,14 @@ func queuePostAction(cmd *cobra.Command, flags *globalFlags, queueID, action str
 		if mode == output.JSON {
 			return output.RenderJSON(cmd.OutOrStdout(), resp)
 		}
-		output.Stderrf("%s %s", strings.Title(action), queueID)
+		// strings.Title is deprecated since Go 1.18 (Unicode title-casing
+		// behaviour issues); for our ASCII action verbs we just upper-case
+		// the first byte, which is correct and stable.
+		actionLabel := action
+		if len(actionLabel) > 0 {
+			actionLabel = strings.ToUpper(actionLabel[:1]) + actionLabel[1:]
+		}
+		output.Stderrf("%s %s", actionLabel, queueID)
 		return nil
 	})
 }

@@ -150,6 +150,18 @@ func userUpdateCmd(flags *globalFlags) *cobra.Command {
 		Short: "Update a user's display name, role, quota, or inbound disposition",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// Reject mutually exclusive flag pairs explicitly so the
+			// operator gets a clear error instead of silent
+			// last-assignment-wins behaviour.
+			if admin && noAdmin {
+				return fmt.Errorf("--admin and --no-admin are mutually exclusive")
+			}
+			if outboundOnly && inboundOK {
+				return fmt.Errorf("--outbound-only and --inbound are mutually exclusive")
+			}
+			if disable && enable {
+				return fmt.Errorf("--disable and --enable are mutually exclusive")
+			}
 			body := map[string]any{}
 			if cmd.Flags().Changed("display") {
 				body["displayName"] = displayName

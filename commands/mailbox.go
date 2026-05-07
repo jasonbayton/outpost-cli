@@ -148,6 +148,9 @@ or --assign flag (cobra treats a flag that has been set once as
 "changed" with the empty value).`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if outboundOnly && inboundOK {
+				return fmt.Errorf("--outbound-only and --inbound are mutually exclusive")
+			}
 			return withClient(flags, func(ctx context.Context, c *client.Client, mode output.Mode) error {
 				accountID, err := resolveMailboxID(ctx, c, args[0])
 				if err != nil {
@@ -398,12 +401,25 @@ func resolveMailboxID(ctx context.Context, c *client.Client, address string) (st
 		return "", err
 	}
 	target := strings.TrimSpace(strings.ToLower(address))
+	// Match by ``address`` (email) only — not by display name. The
+	// update command later splits the same input on '@' to derive
+	// localPart/domainId, so a display-name match would resolve OK
+	// here but fail at update. Keeping the matching surface narrow
+	// also avoids the case where two mailboxes share a display name.
+	var matches []string
 	for _, m := range resp.Mailboxes {
-		if strings.EqualFold(asString(m["address"]), target) || strings.EqualFold(asString(m["name"]), target) {
-			return asString(m["id"]), nil
+		if strings.EqualFold(asString(m["address"]), target) {
+			matches = append(matches, asString(m["id"]))
 		}
 	}
-	return "", fmt.Errorf("no shared mailbox at %q", address)
+	switch len(matches) {
+	case 0:
+		return "", fmt.Errorf("no shared mailbox at %q", address)
+	case 1:
+		return matches[0], nil
+	default:
+		return "", fmt.Errorf("ambiguous: %d shared mailboxes at %q", len(matches), address)
+	}
 }
 
 func buildAssignees(ctx context.Context, c *client.Client, raw []string) ([]map[string]any, error) {
