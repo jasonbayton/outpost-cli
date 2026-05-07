@@ -23,7 +23,42 @@ func domainCmd(flags *globalFlags) *cobra.Command {
 	cmd.AddCommand(domainAddCmd(flags))
 	cmd.AddCommand(domainRemoveCmd(flags))
 	cmd.AddCommand(domainDNSCmd(flags))
+	cmd.AddCommand(domainDkimRotateCmd(flags))
 	return cmd
+}
+
+func domainDkimRotateCmd(flags *globalFlags) *cobra.Command {
+	return &cobra.Command{
+		Use:   "dkim-rotate <name>",
+		Short: "Generate and activate a new DKIM selector",
+		Long: `Mints a new DKIM selector for the domain and updates the configured
+signing key. The previous selector is retired (kept on disk so
+in-flight mail still verifies during the propagation window).
+
+After rotation, publish the new public key in DNS — the TXT value is
+in the response, or run ` + "`outpost domain dns template <name>`" + ` to
+download a fresh zone fragment.`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return withClient(flags, func(ctx context.Context, c *client.Client, mode output.Mode) error {
+				id, err := resolveDomainID(ctx, c, args[0])
+				if err != nil {
+					return err
+				}
+				var resp map[string]any
+				if err := c.Do(ctx, "POST", fmt.Sprintf("/admin/api/domains/%s/dkim-rotate", url.PathEscape(id)), nil, &resp); err != nil {
+					return err
+				}
+				if mode == output.JSON {
+					return output.RenderJSON(cmd.OutOrStdout(), resp)
+				}
+				fmt.Fprintf(cmd.OutOrStdout(), "New selector: %s\n", asString(resp["newSelector"]))
+				fmt.Fprintf(cmd.OutOrStdout(), "DNS TXT (publish under <selector>._domainkey.%s):\n%s\n",
+					args[0], asString(resp["dnsTxtRecord"]))
+				return nil
+			})
+		},
+	}
 }
 
 func domainListCmd(flags *globalFlags) *cobra.Command {
