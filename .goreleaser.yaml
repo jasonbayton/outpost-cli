@@ -1,7 +1,7 @@
 # goreleaser builds + publishes the cross-compiled `outpost` binaries
-# to GitHub Releases on every tag matching cli-vX.Y.Z. The version
-# string is injected via -ldflags so `outpost --version` reports the
-# actual release tag rather than "dev".
+# to GitHub Releases on every `vX.Y.Z` tag (release.yml triggers on
+# `v*`). The version string is injected via -ldflags so
+# `outpost --version` reports the actual release tag rather than "dev".
 version: 2
 
 project_name: outpost
