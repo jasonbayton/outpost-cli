@@ -45,9 +45,13 @@ changelog:
       - "^chore:"
 
 # Homebrew tap. Set GORELEASER_BREW_TAP_TOKEN in the release workflow
-# with a PAT that has 'repo' scope on the tap repository.
+# with a PAT that has 'repo' scope on the tap repository, and create
+# the tap repo (`jasonbayton/homebrew-tap`) before the first release
+# that needs it. Until both are in place, ``skip_upload`` keeps the
+# brew step from failing the whole release with a 401.
 brews:
   - name: outpost
+    skip_upload: '{{ if .Env.GORELEASER_BREW_TAP_TOKEN }}false{{ else }}true{{ end }}'
     repository:
       owner: jasonbayton
       name: homebrew-tap
