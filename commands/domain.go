@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/url"
 	"os"
+	"strings"
 	"text/tabwriter"
 
 	"github.com/spf13/cobra"
@@ -213,12 +214,25 @@ func resolveDomainID(ctx context.Context, c *client.Client, name string) (string
 	if err := c.Do(ctx, "GET", "/admin/api/domains", nil, &resp); err != nil {
 		return "", err
 	}
+	// Normalize: lowercase + strip trailing dot. Domain names on the
+	// server are stored lowercased; an operator typing "Bayton.Org"
+	// or "bayton.org." should resolve identically.
+	want := strings.TrimSuffix(strings.TrimSpace(strings.ToLower(name)), ".")
+	var matches []string
+	var matchedID string
 	for _, d := range resp.Domains {
-		if asString(d["name"]) == name {
-			return asString(d["id"]), nil
+		if strings.EqualFold(asString(d["name"]), want) {
+			matchedID = asString(d["id"])
+			matches = append(matches, matchedID)
 		}
 	}
-	return "", fmt.Errorf("no domain named %q on this server", name)
+	if len(matches) == 0 {
+		return "", fmt.Errorf("no domain named %q on this server", name)
+	}
+	if len(matches) > 1 {
+		return "", fmt.Errorf("ambiguous: %d domains named %q", len(matches), name)
+	}
+	return matchedID, nil
 }
 
 func renderDomainsHuman(w io.Writer, v any) error {

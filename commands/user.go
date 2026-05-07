@@ -218,8 +218,12 @@ func userDisableCmd(flags *globalFlags) *cobra.Command {
 					return err
 				}
 				body := map[string]any{"disabled": true}
-				if err := c.Do(ctx, "PATCH", fmt.Sprintf("/admin/api/users/%s", url.PathEscape(userID)), body, nil); err != nil {
+				var resp map[string]any
+				if err := c.Do(ctx, "PATCH", fmt.Sprintf("/admin/api/users/%s", url.PathEscape(userID)), body, &resp); err != nil {
 					return err
+				}
+				if mode == output.JSON {
+					return output.RenderJSON(cmd.OutOrStdout(), resp)
 				}
 				output.Stderrf("Disabled %s", args[0])
 				return nil
@@ -310,6 +314,11 @@ func userResetPasskeyCmd(flags *globalFlags) *cobra.Command {
 // Returns the User row id ("U..." prefix) the admin panel uses.
 // Uses ?status=all so a disabled user can still be resolved for
 // `user update --enable`, `user rm`, etc.
+//
+// If two users somehow share an email/username (shouldn't happen
+// per the unique-mail-addresses migration #50, but defence in
+// depth), errors with an ambiguity message rather than silently
+// targeting whichever the server returned first.
 func resolveUserID(ctx context.Context, c *client.Client, identifier string) (string, error) {
 	var resp struct {
 		Users []map[string]any `json:"users"`
@@ -318,12 +327,20 @@ func resolveUserID(ctx context.Context, c *client.Client, identifier string) (st
 		return "", err
 	}
 	identifier = strings.ToLower(strings.TrimSpace(identifier))
+	var matches []string
 	for _, u := range resp.Users {
 		if strings.EqualFold(asString(u["email"]), identifier) || strings.EqualFold(asString(u["username"]), identifier) {
-			return asString(u["id"]), nil
+			matches = append(matches, asString(u["id"]))
 		}
 	}
-	return "", fmt.Errorf("no user found for %q", identifier)
+	switch len(matches) {
+	case 0:
+		return "", fmt.Errorf("no user found for %q", identifier)
+	case 1:
+		return matches[0], nil
+	default:
+		return "", fmt.Errorf("ambiguous: %d users match %q (ids: %s)", len(matches), identifier, strings.Join(matches, ", "))
+	}
 }
 
 func splitEmail(addr string) (local, domain string, err error) {

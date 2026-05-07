@@ -21,7 +21,7 @@ func mailboxCmd(flags *globalFlags) *cobra.Command {
 		Long: `Shared mailboxes are non-personal accounts that one or more users have
 delegated access to (postmaster, support, sales, etc.). Differs from a
 regular user account in that there's no human owner — assignees are
-listed via --assign / --unassign.`,
+managed via --assign on create / update.`,
 	}
 	cmd.AddCommand(mailboxListCmd(flags))
 	cmd.AddCommand(mailboxGetCmd(flags))
@@ -139,11 +139,24 @@ func mailboxUpdateCmd(flags *globalFlags) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "update <address>",
 		Short: "Update a shared mailbox's display, quota, aliases, or assignees",
-		Args:  cobra.ExactArgs(1),
+		Long: `The server's PATCH /mailboxes payload requires localPart, domainId,
+displayName, aliases, and assignees together — omitted list fields
+default to empty arrays, which would silently wipe them. So this
+command fetches the current state first and merges your changes onto
+it. To explicitly clear aliases or assignees, pass an empty --alias
+or --assign flag (cobra treats a flag that has been set once as
+"changed" with the empty value).`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return withClient(flags, func(ctx context.Context, c *client.Client, mode output.Mode) error {
 				accountID, err := resolveMailboxID(ctx, c, args[0])
 				if err != nil {
+					return err
+				}
+				// Fetch current state so we don't accidentally clear
+				// fields the operator didn't ask to change.
+				var current map[string]any
+				if err := c.Do(ctx, "GET", fmt.Sprintf("/admin/api/mailboxes/%s", url.PathEscape(accountID)), nil, &current); err != nil {
 					return err
 				}
 				localPart, domainName, err := splitEmail(args[0])
@@ -154,6 +167,11 @@ func mailboxUpdateCmd(flags *globalFlags) *cobra.Command {
 				if err != nil {
 					return err
 				}
+				// Resolve display name: --display overrides; otherwise
+				// keep what the server has.
+				if displayName == "" {
+					displayName = asString(current["displayName"])
+				}
 				body := map[string]any{
 					"localPart":   localPart,
 					"domainId":    domainID,
@@ -161,15 +179,26 @@ func mailboxUpdateCmd(flags *globalFlags) *cobra.Command {
 				}
 				if cmd.Flags().Changed("quota-bytes") {
 					body["quotaBytes"] = quotaBytes
+				} else if q, ok := current["quotaBytes"].(float64); ok {
+					body["quotaBytes"] = int64(q)
 				}
 				if outboundOnly {
 					body["outboundOnly"] = true
-				}
-				if inboundOK {
+				} else if inboundOK {
 					body["outboundOnly"] = false
+				} else if v, ok := current["outboundOnly"].(bool); ok {
+					body["outboundOnly"] = v
 				}
+				// Aliases: explicit --alias overrides; otherwise carry
+				// the existing list forward. Same for assignees.
 				if cmd.Flags().Changed("alias") {
 					body["aliases"] = aliases
+				} else if list, ok := current["aliases"].([]any); ok {
+					existing := make([]string, 0, len(list))
+					for _, a := range list {
+						existing = append(existing, asString(a))
+					}
+					body["aliases"] = existing
 				}
 				if cmd.Flags().Changed("assign") {
 					list, err := buildAssignees(ctx, c, assignees)
@@ -177,6 +206,19 @@ func mailboxUpdateCmd(flags *globalFlags) *cobra.Command {
 						return err
 					}
 					body["assignees"] = list
+				} else if list, ok := current["assignees"].([]any); ok {
+					existing := make([]map[string]any, 0, len(list))
+					for _, a := range list {
+						mp, _ := a.(map[string]any)
+						if mp == nil {
+							continue
+						}
+						existing = append(existing, map[string]any{
+							"userId": asString(mp["userId"]),
+							"preset": asString(mp["preset"]),
+						})
+					}
+					body["assignees"] = existing
 				}
 				var resp map[string]any
 				if err := c.Do(ctx, "PATCH", fmt.Sprintf("/admin/api/mailboxes/%s", url.PathEscape(accountID)), body, &resp); err != nil {
@@ -190,13 +232,12 @@ func mailboxUpdateCmd(flags *globalFlags) *cobra.Command {
 			})
 		},
 	}
-	cmd.Flags().StringVar(&displayName, "display", "", "New display name")
-	cmd.Flags().Int64Var(&quotaBytes, "quota-bytes", 0, "Set quota in bytes")
+	cmd.Flags().StringVar(&displayName, "display", "", "Replace display name (default: keep current)")
+	cmd.Flags().Int64Var(&quotaBytes, "quota-bytes", 0, "Set quota in bytes (default: keep current)")
 	cmd.Flags().BoolVar(&outboundOnly, "outbound-only", false, "Refuse inbound")
 	cmd.Flags().BoolVar(&inboundOK, "inbound", false, "Re-enable inbound")
-	cmd.Flags().StringArrayVar(&aliases, "alias", nil, "Replace alias list (repeatable)")
-	cmd.Flags().StringArrayVar(&assignees, "assign", nil, "Replace assignee list (repeatable)")
-	_ = cmd.MarkFlagRequired("display")
+	cmd.Flags().StringArrayVar(&aliases, "alias", nil, "Replace alias list (repeatable; pass empty to clear)")
+	cmd.Flags().StringArrayVar(&assignees, "assign", nil, "Replace assignee list (repeatable; pass empty to clear)")
 	return cmd
 }
 

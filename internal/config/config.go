@@ -9,8 +9,10 @@ package config
 import (
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/BurntSushi/toml"
 )
@@ -115,6 +117,12 @@ func configPath() (string, error) {
 // stored DefaultHost. Returns an error if none resolve to a host
 // known in the config — callers can use that to print a "run
 // `outpost auth login`" hint.
+//
+// Accepts URL-form ("https://outpost.example.org") or bare-host
+// ("outpost.example.org") inputs interchangeably and normalizes to
+// the same key the login flow stored. Otherwise `--server https://x`
+// would resolve as a different host than `--server x` even though
+// `auth login` saved them under the same key.
 func (c *Config) Resolve(explicitServer string) (string, HostConfig, error) {
 	want := explicitServer
 	if want == "" {
@@ -126,9 +134,25 @@ func (c *Config) Resolve(explicitServer string) (string, HostConfig, error) {
 	if want == "" {
 		return "", HostConfig{}, errors.New("no server configured. run `outpost auth login` first, or pass --server")
 	}
+	want = normalizeHostKey(want)
 	host, ok := c.Hosts[want]
 	if !ok {
 		return want, HostConfig{}, fmt.Errorf("no stored credentials for %q. run `outpost auth login --server %s`", want, want)
 	}
 	return want, host, nil
+}
+
+// normalizeHostKey reduces a server identifier to the form `auth login`
+// stored it under: lower-cased hostname only, no scheme, no trailing
+// slash. Port numbers are preserved (port matters for non-default
+// deployments).
+func normalizeHostKey(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return value
+	}
+	if parsed, err := url.Parse(value); err == nil && parsed.Host != "" {
+		return strings.ToLower(parsed.Host)
+	}
+	return strings.ToLower(strings.TrimSuffix(value, "/"))
 }
