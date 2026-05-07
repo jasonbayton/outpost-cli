@@ -63,14 +63,56 @@ The token lands in `~/.config/outpost/config.toml` (mode `0600`).
 ## Usage
 
 ```sh
+# Health + reconciler state
 outpost health
-outpost domain list
-outpost domain dns template greenrobot.co > greenrobot.zone
 outpost reconcile status
-outpost mail send -f postmaster@example.org -t me@example.com -s probe --text hi
+
+# Domains
+outpost domain list
+outpost domain add greenrobot.co
+outpost domain dns template greenrobot.co > greenrobot.zone
+outpost domain dns verify greenrobot.co
+outpost domain dkim-rotate greenrobot.co
+
+# Users
+outpost user list
+outpost user add alice@bayton.org --display "Alice"
+outpost user reset-password alice@bayton.org
+outpost user disable alice@bayton.org
+outpost user rm alice@bayton.org --yes
+
+# Aliases
+outpost alias list --domain bayton.org
+outpost alias add support@bayton.org alice@bayton.org
+outpost alias add bayton.org all@bayton.org --catch-all
+outpost alias rm support@bayton.org
+
+# Shared mailboxes
+outpost mailbox list
+outpost mailbox add postmaster@bayton.org --display "Postmaster" \
+  --assign alice@bayton.org:manager --assign bob@bayton.org:responder
+outpost mailbox key create postmaster@bayton.org --label "github-actions"
+
+# Quarantine
+outpost quarantine list
+outpost quarantine release <id> --whitelist
+outpost quarantine blacklist <id>
+
+# Outbound queue
+outpost queue list --status deferred
+outpost queue retry <queue-id>
+outpost queue hold <queue-id>
+
+# Send mail
+outpost mail send -f postmaster@bayton.org -t me@example.com -s probe --text hi
 ```
 
 Add `--json` to any command for machine-readable output (handy in CI).
+
+The full mailctl surface is mirrored except for: `backup`, `mta-sts generate / verify`,
+`tls-rpt`, `sender block/allow`, `reputation` — all of which need direct DB access
+or are filesystem-bound and stay on `mailctl` (SSH-only). Everything an admin can
+do through the panel UI is reachable from `outpost`.
 
 ## Multiple servers
 

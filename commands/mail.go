@@ -182,11 +182,16 @@ func buildSendBody(sf *sendFlags) (map[string]any, error) {
 	return body, nil
 }
 
-// parseRecipients accepts both "alice@example.com" and
-// "Alice <alice@example.com>" forms. Server-side, both reduce to a
-// {name, email} object — but we send strings when there's no name,
-// because that's what the SendRequest pydantic model also accepts
-// and it keeps the wire payload smaller for the common case.
+// parseRecipients accepts "alice@example.com", "Alice <alice@example.com>",
+// and the bare-angle-bracket "<alice@example.com>" forms. Server-side,
+// SendRequest accepts either a string or a {name, email} object.
+//
+// We emit {name, email} when ParseAddress finds a display name; emit
+// the parsed bare email when there's no name (NOT the raw input —
+// "<alice@example.com>" with the brackets retained would fail the
+// server's address validator). Only fall back to raw input when
+// ParseAddress fails entirely so the server can return the better
+// error message.
 func parseRecipients(raw []string) []any {
 	out := make([]any, 0, len(raw))
 	for _, r := range raw {
@@ -194,12 +199,15 @@ func parseRecipients(raw []string) []any {
 		if r == "" {
 			continue
 		}
-		addr, err := mail.ParseAddress(r)
-		if err != nil || addr.Name == "" {
-			out = append(out, r)
+		if addr, err := mail.ParseAddress(r); err == nil {
+			if addr.Name != "" {
+				out = append(out, map[string]any{"name": addr.Name, "email": addr.Address})
+			} else {
+				out = append(out, addr.Address)
+			}
 			continue
 		}
-		out = append(out, map[string]any{"name": addr.Name, "email": addr.Address})
+		out = append(out, r)
 	}
 	return out
 }

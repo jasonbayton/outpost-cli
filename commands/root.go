@@ -44,6 +44,11 @@ keeps working during recovery. outpost is the laptop / CI tool.`,
 	root.AddCommand(authCmd(flags))
 	root.AddCommand(healthCmd(flags))
 	root.AddCommand(domainCmd(flags))
+	root.AddCommand(userCmd(flags))
+	root.AddCommand(aliasCmd(flags))
+	root.AddCommand(mailboxCmd(flags))
+	root.AddCommand(quarantineCmd(flags))
+	root.AddCommand(queueCmd(flags))
 	root.AddCommand(reconcileCmd(flags))
 	root.AddCommand(mailCmd(flags))
 
