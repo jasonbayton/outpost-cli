@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 
 	"github.com/jasonbayton/outpost-cli/internal/client"
 	"github.com/jasonbayton/outpost-cli/internal/config"
@@ -188,11 +189,19 @@ func authLogoutCmd(flags *globalFlags) *cobra.Command {
 	}
 }
 
-// readToken reads from stdin (pipe or interactive prompt). We don't
-// disable echo here in v1 — operators can paste with eyes-on; if it
-// becomes annoying we can pull in golang.org/x/term later.
+// readToken reads from stdin (pipe or interactive prompt). When stdin is a
+// terminal we disable echo so the pasted token never lands on screen or in a
+// scrollback buffer. Non-TTY input (CI pipes) falls back to a plain line read.
 func readToken(in io.Reader, prompt io.Writer) (string, error) {
 	fmt.Fprint(prompt, "API token: ")
+	if f, ok := in.(*os.File); ok && term.IsTerminal(int(f.Fd())) {
+		raw, err := term.ReadPassword(int(f.Fd()))
+		fmt.Fprintln(prompt) // ReadPassword swallows the user's Enter newline
+		if err != nil {
+			return "", fmt.Errorf("read token: %w", err)
+		}
+		return strings.TrimSpace(string(raw)), nil
+	}
 	r := bufio.NewReader(in)
 	line, err := r.ReadString('\n')
 	if err != nil && err != io.EOF {
@@ -212,6 +221,3 @@ func coalesce(m map[string]any, key, fallback string) string {
 	}
 	return fallback
 }
-
-// silence unused-import warning during partial builds
-var _ = os.Stderr
