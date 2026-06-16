@@ -120,7 +120,7 @@ leaks it to shell history and /proc/$pid/cmdline. Provide it via:
 			if err != nil {
 				return err
 			}
-			output.Stderrf("Logged in as %s", coalesce(session, "username", "(unknown)"))
+			output.Stderrf("Logged in as %s", identityLabel(session))
 			output.Stderrf("Stored credentials for %s in %s", hostKey, path)
 			if cfg.DefaultHost == hostKey {
 				output.Stderrf("Default host set to %s", hostKey)
@@ -152,7 +152,7 @@ func authStatusCmd(flags *globalFlags) *cobra.Command {
 					})
 				}
 				fmt.Fprintf(cmd.OutOrStdout(), "Server: %s\n", c.Base())
-				fmt.Fprintf(cmd.OutOrStdout(), "User:   %s\n", coalesce(session, "username", "(unknown)"))
+				fmt.Fprintf(cmd.OutOrStdout(), "User:   %s\n", identityLabel(session))
 				return nil
 			})
 		},
@@ -208,6 +208,19 @@ func readToken(in io.Reader, prompt io.Writer) (string, error) {
 		return "", fmt.Errorf("read token: %w", err)
 	}
 	return strings.TrimSpace(line), nil
+}
+
+// identityLabel produces a human label for an /auth/session response. For a
+// shared-mailbox key the username is the mailbox's creator, not the mailbox,
+// so we prefer the account address and tag it. Personal accounts keep showing
+// their username. Tolerant of older servers that omit accountName/isPersonal.
+func identityLabel(session map[string]any) string {
+	accountName := coalesce(session, "accountName", "")
+	personal, hasPersonal := session["isPersonal"].(bool)
+	if accountName != "" && hasPersonal && !personal {
+		return fmt.Sprintf("%s (shared mailbox)", accountName)
+	}
+	return coalesce(session, "username", "(unknown)")
 }
 
 func coalesce(m map[string]any, key, fallback string) string {
